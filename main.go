@@ -2,55 +2,66 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/cognitoidentityprovider"
 	"github.com/gin-contrib/cors"
+	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-gonic/gin"
 )
 
-type CreateUser struct {
-	Email    string `form:"title" json:"title" binding:"required"`
-	Password string `form:"body" json:"body" binding:"required"`
+type LOGIN struct{
+    EMAIL string `json:"email" binding:"required"`
+    PASSWORD string `json:"password" binding:"required"`
 }
 
-var json CreatePost
+type Claims struct {
+	Email string `json:"email"`
+	jwt.StandardClaims
+}
 
 func main() {
 
 	r := gin.Default()
-	// r.Use(cors.New(cors.Config{
-	// 	AllowOrigins:     []string{"*"},
-	// 	AllowMethods:     []string{"PUT", "PATCH", "POST"},
-	// 	AllowHeaders:     []string{"Origin"},
-	// 	ExposeHeaders:    []string{"Content-Length"},
-	// 	AllowCredentials: true,
-	// 	AllowOriginFunc: func(origin string) bool {
-	// 		return origin == "https://github.com"
-	// 	},
-	// 	MaxAge: 12 * time.Hour,
-	// }))
-
-	// r.GET("/internal", handleInternalRequest)
 	r.POST("/internal", handleInternalRequest)
 	r.GET("/healthcheck", handleHealthCheck)
 	r.Use(cors.Default())
-	r.Run() // listen and serve on 0.0.0.0:8080 (for windows "localhost:8080")
+	r.Run(":6001")
 }
 
 func handleInternalRequest(c *gin.Context) {
+
+	//- bind to struct
+	var login LOGIN
+	c.BindJSON(&login)
+
+	var jwtKey = []byte("qwertyuiopasdfghjkl;'zxcvbnm,!@#$%^&*()")
+	expirationTime := time.Now().Add(5 * time.Minute)
+	claims := &Claims{
+		Email: login.EMAIL,
+		StandardClaims: jwt.StandardClaims{
+			// In JWT, the expiry time is expressed as unix milliseconds
+			ExpiresAt: expirationTime.Unix(),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString(jwtKey)
+	if err != nil {
+		// If there is an error in creating the JWT return an internal server error
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
 
 	c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 	c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 	c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
 	c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT")
 
-	fmt.Println("query params...", c.Request.URL.Query())
-	fmt.Println("params...", c.Query("firstName"))
-	fmt.Println("raw data...", c.Request.Body)
 	// userPoolId := "ap-southeast-1_ihWPvETFg"
-	var clientId, poolRegion, email, password string = "5mhq4tjs8nuscdjr1cee65ev9i", "ap-southeast-1", "transybao93@gmail.com", "LvFasCK5"
+	// var clientId, poolRegion, email, password string = "5mhq4tjs8nuscdjr1cee65ev9i", "ap-southeast-1", "transybao28@gmail.com", "transybao93"
+	var clientId, poolRegion, email, password string = "5mhq4tjs8nuscdjr1cee65ev9i", "ap-southeast-1", login.EMAIL, login.PASSWORD
 	//- authentication here
 	svc := cognitoidentityprovider.New(session.New(), &aws.Config{Region: aws.String(poolRegion)})
 	fmt.Println("Created new session of aws services...")
@@ -67,14 +78,21 @@ func handleInternalRequest(c *gin.Context) {
 
 	resp, err := svc.InitiateAuth(params)
 	if err != nil {
-		fmt.Println(err.Error())
+		c.JSON(401, gin.H{"error": err.Error()})
 		return
+	} else {
+		// fmt.Println(resp)
+		// fmt.Println("email", login.EMAIL)
+		c.JSON(200, gin.H{"challengeName": resp.ChallengeName, "tokenString": tokenString, "expirationTime": expirationTime})
 	}
-	fmt.Println(resp)
 
-	c.JSON(401, gin.H{
-		"message": "pong",
-	})
+	// c.JSON(401, gin.H{
+	// 	"message": "pong",
+	// })
+}
+
+func handleJWT() string {
+	return ""
 }
 
 func handleHealthCheck(c *gin.Context) {
