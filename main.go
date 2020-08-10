@@ -81,14 +81,8 @@ func handleInternalRequest(c *gin.Context) {
 		c.JSON(401, gin.H{"error": err.Error()})
 		return
 	} else {
-		// fmt.Println(resp)
-		// fmt.Println("email", login.EMAIL)
 		c.JSON(200, gin.H{"challengeName": resp.ChallengeName, "tokenString": tokenString, "expirationTime": expirationTime})
 	}
-
-	// c.JSON(401, gin.H{
-	// 	"message": "pong",
-	// })
 }
 
 func handleJWT() string {
